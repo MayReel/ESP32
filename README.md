@@ -1,6 +1,3 @@
-# ESP32
-This repository use for education only
-Here this is source code
 ```
 #include "DHT.h"
 #include <Firebase_ESP_Client.h>
@@ -11,18 +8,16 @@ Here this is source code
 #elif defined(ESP8266)
 #include <ESP8266WiFi.h>
 #endif
+#include <ESP32Servo.h> 
 
+#define ledPin 14
 #define DHTPIN 18
 #define PWM 13
-#define Relay1 22
-#define Relay2 23
-//Enter API key
+#define Relay2 22  
+#define SERVO_PIN 23  
 #define API_KEY ""
-//Enter WiFi Username
 #define WIFI_SSID ""
-//Enter WiFi Password
 #define WIFI_PASSWORD ""
-Enter firebase's database url
 #define DATABASE_URL ""
 
 FirebaseData fbdo;
@@ -30,13 +25,16 @@ FirebaseAuth auth;
 FirebaseConfig config;
 
 unsigned long sendDataPrevMillis = 0;
+unsigned long wifiCheckPrevMillis = 0;
+unsigned long resetPrevMillis = 0;
 bool signupOK = false;
 #define DHTTYPE DHT22
 
 DHT dht(DHTPIN, DHTTYPE);
+Servo doorServo;  
 
 void setup() {
-    Serial.begin(9600);
+    Serial.begin(115200);
     Serial.println(F("DHTxx test!"));
 
     config.api_key = API_KEY;
@@ -66,9 +64,10 @@ void setup() {
     Firebase.reconnectWiFi(true);
     dht.begin();
 
-    pinMode(Relay1, OUTPUT);
     pinMode(Relay2, OUTPUT);
     pinMode(PWM, OUTPUT);
+    doorServo.attach(SERVO_PIN);  
+    pinMode(ledPin, OUTPUT);  
 }
 
 void loop() {
@@ -78,6 +77,16 @@ void loop() {
         updateFanStatus();
         updateLightStatus();
         updateDoorLockStatus();
+    }
+    
+    if (millis() - wifiCheckPrevMillis > 1000) {  
+        wifiCheckPrevMillis = millis();
+        checkWiFiStatus();
+    }
+
+    if (millis() - resetPrevMillis > 60000) {  
+        resetPrevMillis = millis();
+        ESP.restart();  // Reset the ESP32/ESP8266
     }
 }
 
@@ -146,16 +155,27 @@ void updateLightStatus() {
         }
     }
 }
+
 void updateDoorLockStatus() {
     if (Firebase.ready() && signupOK) {
         if (Firebase.RTDB.getInt(&fbdo, "Lock/CurrentStatus")) {
             int LockStatus = fbdo.intData();
             Serial.println("Lock Status: " + String(LockStatus));
-            digitalWrite(Relay1, LockStatus == 0 ? HIGH : LOW);
+            doorServo.write(LockStatus == 0 ? 90 : 0);  
         } else {
             Serial.println("Failed to get Lock status");
             Serial.println("REASON: " + fbdo.errorReason());
         }
+    }
+}
+
+void checkWiFiStatus() {
+    if (WiFi.status() != WL_CONNECTED) {
+        digitalWrite(ledPin, LOW);  
+        Serial.println("Wi-Fi disconnected");
+    } else {
+        digitalWrite(ledPin, HIGH);  
+        Serial.println("Wi-Fi connected");
     }
 }
 ```
